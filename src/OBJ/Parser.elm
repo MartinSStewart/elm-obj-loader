@@ -24,33 +24,38 @@ parse input =
 
 type Progress
     = InProgress { toDo : List String, done : List Line }
-    | Finished (List Line)
-    | Error String
+    | Finished (Result String (List Line))
 
 
+{-|
+For incremental parsing.
+This has to be used first
+-}
 startParse : String -> Progress
 startParse input =
     InProgress { toDo = String.split "\n" input, done = [] }
 
 
+{-| For incremental parsing.
+Do only stepSize steps of parsing.
+If stepSize is chosen small enough,
+then the browser will not freeze if sleep 0 statements are used inbetween.
+-}
 stepParse : Int -> Progress -> Progress
 stepParse stepSize progress =
     case progress of
         InProgress { toDo, done } ->
             case toDo of
                 [] ->
-                    Finished done
+                    Finished (Ok done)
 
                 [ l ] ->
                     if canSkip l then
-                        Finished done
+                        Finished (Ok done)
                     else
-                        case parseLine l of
-                            Ok d ->
-                                Finished (done ++ [ d ])
-
-                            Err e ->
-                                Error e
+                        parseLine l
+                            |> Result.map (\d -> done ++ [ d ])
+                            |> Finished
 
                 l :: ls ->
                     if canSkip l then
@@ -70,10 +75,10 @@ stepParse stepSize progress =
                                         stepParse (stepSize - 1) p
 
                             Err e ->
-                                Error e
+                                Finished (Err e)
 
-        other ->
-            other
+        finished ->
+            finished
 
 
 parseLineAcc : String -> Result String (List Line) -> Result String (List Line)

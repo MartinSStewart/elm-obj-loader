@@ -157,6 +157,9 @@ loadObjFileWith settings url msg =
 
 {-|
 Same as `loadObjFile`, but works on a string.
+This is a blocking (!) operation.
+If your string is big, your browser will freeze.
+`loadObjFile` is non-blocking.
 -}
 parseObjStringWith : Settings -> String -> Result String ObjFile
 parseObjStringWith config input =
@@ -171,16 +174,14 @@ nonBlockingParse settings input =
 
 nonBlockingParseHelper : Settings -> Progress -> Task x (Result String ObjFile)
 nonBlockingParseHelper settings p =
-    Process.sleep 1
+    Process.sleep 0
         |> Task.andThen
             (\_ ->
                 case stepParse 100 p of
-                    Finished d ->
-                        Task.succeed (Ok <| compile settings d)
-
                     InProgress p_ ->
                         nonBlockingParseHelper settings (InProgress p_)
 
-                    Error e ->
-                        Task.succeed (Err e)
+                    Finished d ->
+                        Result.map (compile settings) d
+                            |> Task.succeed
             )

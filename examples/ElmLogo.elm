@@ -77,6 +77,8 @@ models : List String
 models =
     [ "meshes/elmLogo.obj"
     , "meshes/suzanneNoUV.obj"
+    , "testObjs/elmLogo_1subdiv.obj"
+    , "testObjs/elmLogo_2subdiv.obj"
     ]
 
 
