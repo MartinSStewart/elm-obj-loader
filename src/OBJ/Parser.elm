@@ -22,6 +22,60 @@ parse input =
         |> List.foldr parseLineAcc (Ok [])
 
 
+type Progress
+    = InProgress { toDo : List String, done : List Line }
+    | Finished (List Line)
+    | Error String
+
+
+startParse : String -> Progress
+startParse input =
+    InProgress { toDo = String.split "\n" input, done = [] }
+
+
+stepParse : Int -> Progress -> Progress
+stepParse stepSize progress =
+    case progress of
+        InProgress { toDo, done } ->
+            case toDo of
+                [] ->
+                    Finished done
+
+                [ l ] ->
+                    if canSkip l then
+                        Finished done
+                    else
+                        case parseLine l of
+                            Ok d ->
+                                Finished (done ++ [ d ])
+
+                            Err e ->
+                                Error e
+
+                l :: ls ->
+                    if canSkip l then
+                        -- skipping a line doesn't count towards numbers of lines parsed.
+                        -- should it count?
+                        stepParse stepSize (InProgress { toDo = ls, done = done })
+                    else
+                        case parseLine l of
+                            Ok d ->
+                                let
+                                    p =
+                                        InProgress { toDo = ls, done = done ++ [ d ] }
+                                in
+                                    if stepSize <= 0 then
+                                        p
+                                    else
+                                        stepParse (stepSize - 1) p
+
+                            Err e ->
+                                Error e
+
+        other ->
+            other
+
+
 parseLineAcc : String -> Result String (List Line) -> Result String (List Line)
 parseLineAcc line acc =
     case acc of

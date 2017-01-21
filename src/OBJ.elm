@@ -30,9 +30,10 @@ if your files contain multiple groups or materials.
 import Dict exposing (Dict)
 import Http
 import OBJ.Assembler exposing (compile)
-import OBJ.Parser exposing (parse)
+import OBJ.Parser exposing (parse, startParse, stepParse, Progress(..))
 import OBJ.Types exposing (Mesh, ObjFile)
-import Task
+import Task exposing (Task)
+import Process
 
 
 --
@@ -136,7 +137,8 @@ loadObjFileWith settings url msg =
     Http.toTask (Http.getString url)
         |> Task.andThen
             (\s ->
-                parseObjStringWith settings s |> Task.succeed
+                nonBlockingParse settings s
+             -- parseObjStringWith settings s |> Task.succeed
             )
         |> Task.onError (\e -> Task.succeed (Err ("failed to load:\n" ++ toString e)))
         |> Task.attempt
@@ -160,3 +162,25 @@ parseObjStringWith : Settings -> String -> Result String ObjFile
 parseObjStringWith config input =
     parse input
         |> Result.map (compile config)
+
+
+nonBlockingParse : Settings -> String -> Task x (Result String ObjFile)
+nonBlockingParse settings input =
+    nonBlockingParseHelper settings (startParse input)
+
+
+nonBlockingParseHelper : Settings -> Progress -> Task x (Result String ObjFile)
+nonBlockingParseHelper settings p =
+    Process.sleep 1
+        |> Task.andThen
+            (\_ ->
+                case stepParse 100 p of
+                    Finished d ->
+                        Task.succeed (Ok <| compile settings d)
+
+                    InProgress p_ ->
+                        nonBlockingParseHelper settings (InProgress p_)
+
+                    Error e ->
+                        Task.succeed (Err e)
+            )
