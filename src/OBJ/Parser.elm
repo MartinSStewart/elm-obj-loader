@@ -38,7 +38,7 @@ startParse input =
 {-| For incremental parsing.
 Do only stepSize steps of parsing.
 If stepSize is chosen small enough,
-then the browser will not freeze if sleep 0 statements are used inbetween.
+then the browser will not freeze if sleep 0 statements are used in-between.
 -}
 stepParse : Int -> Progress -> Progress
 stepParse stepSize progress =
@@ -98,7 +98,7 @@ parseLineAcc line acc =
 
 
 canSkip line =
-    Regex.contains (Regex.regex "^((\\s*)|(#.*))$") line
+    Regex.contains (Regex.regex "^((\\s*)|(\\s*#.*\\r?))$") line
 
 
 parseLine l =
@@ -225,26 +225,22 @@ threeOrFourValues elements =
 
 int_int_int : Parser ( Int, Int, Int )
 int_int_int =
-    -- temporary workaround for
-    -- https://github.com/elm-tools/parser/issues/4
-    succeed (\a b c -> ( round a, round b, round c ))
-        |= float
+    succeed (,,)
+        |= int
         |. symbol "/"
-        |= float
+        |= int
         |. symbol "/"
-        |= float
+        |= int
 
 
 int__int : Parser ( Int, Int )
 int__int =
-    -- temporary workaround for
-    -- https://github.com/elm-tools/parser/issues/4
-    delayedCommitMap (\a b -> ( round a, round b ))
+    delayedCommitMap (\a b -> ( a, b ))
         (succeed identity
-            |= float
+            |= int
             |. symbol "//"
         )
-        float
+        int
 
 
 int_int : Parser ( Int, Int )
@@ -332,12 +328,9 @@ spaces =
 ignoredStuff : Parser ()
 ignoredStuff =
     oneOf
-        [ delayedCommit (ignore (Exactly 1) isSpace) (ignoreUntil "\n")
-        , delayedCommit (ignore (Exactly 1) (\c -> c == '#')) (ignoreUntil "\n")
-
-        -- ignore windows line endings
-        -- '\x0D' is \r, elm format somehow thought \x0D was nicer..
-        , delayedCommit (ignore (Exactly 1) (\c -> c == '\x0D')) (ignoreUntil "\n")
+        [ -- ignore windows line endings
+          -- '\x0D' is \r, elm format somehow thought \x0D was nicer..
+          delayedCommit (ignore (Exactly 1) (\c -> c == '#' || isSpace c || c == '\x0D')) (ignoreUntil "\n")
         , ignore (Exactly 1) (\c -> c == '\n')
         ]
 
