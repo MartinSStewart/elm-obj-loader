@@ -2,12 +2,10 @@ module OBJ.Parser exposing (..)
 
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Math.Vector2 as V2 exposing (Vec2, vec2)
-import Combine exposing (..)
-import Json.Decode as JD
-import Combine.Num exposing (..)
-import Combine.Char exposing (..)
+import Parser exposing (Parser, (|.), (|=), float, int, succeed, repeat, ignore, ignoreUntil, Count(..), keep, symbol, keyword, oneOf, oneOrMore, delayedCommit, delayedCommitMap, end, zeroOrMore)
+import Parser.LanguageKit exposing (whitespace, MultiComment(..), LineComment(..))
 import OBJ.InternalTypes exposing (..)
-import Regex exposing (find, HowMany(..))
+import Regex
 
 
 -- TODO: figure out how nice error messages work
@@ -18,8 +16,10 @@ import Regex exposing (find, HowMany(..))
 
 parse : String -> Result String (List Line)
 parse input =
-    String.split "\n" input
-        |> List.foldr parseLineAcc (Ok [])
+    -- String.split "\n" input
+    -- |> List.foldr parseLineAcc (Ok [])
+    Parser.run file input
+        |> Result.mapError toString
 
 
 type Progress
@@ -27,8 +27,7 @@ type Progress
     | Finished (Result String (List Line))
 
 
-{-|
-For incremental parsing.
+{-| For incremental parsing.
 This has to be used first
 -}
 startParse : String -> Progress
@@ -99,219 +98,259 @@ parseLineAcc line acc =
 
 
 canSkip line =
-    Regex.contains (Regex.regex "^((\\s*\\n*)|(#.*))$") line
+    Regex.contains (Regex.regex "^((\\s*)|(#.*))$") line
 
 
 parseLine l =
-    case Combine.parse line l of
-        Ok ( _, stream, result ) ->
+    case Parser.run line l of
+        Ok result ->
             Ok result
 
-        Err ( _, stream, errors ) ->
-            Err (formatError errors stream)
+        Err errors ->
+            Err (toString errors)
 
 
-file : Parser s (List Line)
+file : Parser (List Line)
 file =
-    (many ignoredLines)
-        *> sepBy (many1 ignoredLines)
-            line
-        <* (many ignoredLines)
-        <* end
+    succeed identity
+        |= repeat zeroOrMore
+            (succeed identity
+                |. repeat zeroOrMore ignoredStuff
+                |= line
+                |. repeat zeroOrMore ignoredStuff
+            )
+        |. end
 
 
-ignoredLines : Parser s ()
-ignoredLines =
-    (skip eol) <|> (skip comment)
-
-
-objectName : Parser s String
-objectName =
-    regex "o[ \t]+" *> regex ".+"
-
-
-mtllib : Parser s String
-mtllib =
-    regex "mtllib[ \t]+" *> regex ".+"
-
-
-group : Parser s String
-group =
-    (regex "g[ \t]+" *> regex ".+")
-        <|> (char 'g' *> succeed "")
-
-
-smooth : Parser s String
-smooth =
-    regex "s[ \t]+" *> regex ".+"
-
-
-usemtl : Parser s String
-usemtl =
-    regex "usemtl[ \t]+" *> regex ".+"
-
-
-line : Parser s Line
+line : Parser Line
 line =
-    choice
-        [ V <$> vertex
-        , Vt <$> vertexTexture
-        , Vn <$> vertexNormal
-        , F <$> face
-        , Object <$> objectName
-        , Group <$> group
-        , Smooth <$> smooth
-        , UseMtl <$> usemtl
-        , MtlLib <$> mtllib
+    oneOf
+        [ vertexTexture
+        , vertexNormal
+        , vertex
+        , face
+        , objectName
+        , group
+        , smooth
+        , usemtl
+        , mtllib
         ]
-        <* regex "[ \t]*"
 
 
-face : Parser s Face
+objectName : Parser Line
+objectName =
+    succeed Object
+        |. keyword "o"
+        |. spaces
+        |= words
+
+
+mtllib : Parser Line
+mtllib =
+    succeed MtlLib
+        |. keyword "mtllib"
+        |. spaces
+        |= words
+
+
+group : Parser Line
+group =
+    oneOf
+        [ succeed Group
+            |= delayedCommit
+                (keyword "g"
+                    |. spaces
+                )
+                words
+        , Parser.map (always (Group "")) (keyword "g")
+        ]
+
+
+smooth : Parser Line
+smooth =
+    succeed Smooth
+        |. keyword "s"
+        |. spaces
+        |= words
+
+
+usemtl : Parser Line
+usemtl =
+    succeed UseMtl
+        |. keyword "usemtl"
+        |. spaces
+        |= words
+
+
+words : Parser String
+words =
+    keep oneOrMore (\c -> not (c == '\n' || c == '#'))
+
+
+face : Parser Line
 face =
-    regex "f[ \t]+"
-        *> choice
-            [ fVertexTextureNormal
-            , fVertexNormal
-            , fVertex
-            , fVertexTexture
+    succeed F
+        |. keyword "f"
+        |. spaces
+        |= oneOf
+            [ fVertexNormal
+            , fVertexTextureNormal
             ]
 
 
-fVertex : Parser s a
-fVertex =
-    threeOrFourValues int
-        *> fail "Models with no precalculated vertex normals are not supported!"
-
-
-fVertexTexture : Parser s a
-fVertexTexture =
-    threeOrFourValues int_int
-        *> fail "Models with no precalculated vertex normals are not supported!"
-
-
-fVertexTextureNormal : Parser s Face
+fVertexTextureNormal : Parser Face
 fVertexTextureNormal =
-    FVertexTextureNormal <$> threeOrFourValues int_int_int
+    succeed FVertexTextureNormal
+        |= threeOrFourValues int_int_int
 
 
-fVertexNormal : Parser s Face
+fVertexNormal : Parser Face
 fVertexNormal =
-    FVertexNormal <$> threeOrFourValues int__int
+    succeed FVertexNormal
+        |= threeOrFourValues int__int
 
 
-threeValues : (a -> a -> a -> b) -> Parser s a -> Parser s b
-threeValues tagger vtype =
-    tagger <$> (vtype) <*> (spaces *> vtype) <*> (spaces *> vtype)
-
-
-fourValues : (a -> a -> a -> a -> b) -> Parser s a -> Parser s b
-fourValues tagger vtype =
-    tagger <$> (vtype) <*> (spaces *> vtype) <*> (spaces *> vtype) <*> (spaces *> vtype)
-
-
-threeOrFourValues : Parser s a -> Parser s (ThreeOrFour a)
+threeOrFourValues : Parser a -> Parser (ThreeOrFour a)
 threeOrFourValues elements =
-    (Four <$> (fourValues (,,,) elements))
-        <|> (Three <$> (threeValues (,,) elements))
+    oneOf
+        [ delayedCommitMap (\( a, b, c ) d -> Four ( a, b, c, d ))
+            (threeValues (,,) elements
+                |. spaces
+            )
+            elements
+        , succeed Three
+            |= threeValues (,,) elements
+        ]
 
 
-int_int : Parser s ( Int, Int )
-int_int =
-    (,) <$> int <*> (string "/" *> int)
-
-
-int_int_int : Parser s ( Int, Int, Int )
+int_int_int : Parser ( Int, Int, Int )
 int_int_int =
-    (,,) <$> int <*> (string "/" *> int) <*> (string "/" *> int)
+    -- temporary workaround for
+    -- https://github.com/elm-tools/parser/issues/4
+    succeed (\a b c -> ( round a, round b, round c ))
+        |= float
+        |. symbol "/"
+        |= float
+        |. symbol "/"
+        |= float
 
 
-int__int : Parser s ( Int, Int )
+int__int : Parser ( Int, Int )
 int__int =
-    (,) <$> int <*> (string "//" *> int)
+    -- temporary workaround for
+    -- https://github.com/elm-tools/parser/issues/4
+    delayedCommitMap (\a b -> ( round a, round b ))
+        (succeed identity
+            |= float
+            |. symbol "//"
+        )
+        float
 
 
-vertexNormal : Parser s Vec3
+int_int : Parser ( Int, Int )
+int_int =
+    succeed (,)
+        |= int
+        |. symbol "/"
+        |= int
+
+
+vertexNormal : Parser Line
 vertexNormal =
-    regex "vn[ \t]+" *> (V3.normalize <$> vector3)
+    succeed Vn
+        |. keyword "vn"
+        |. spaces
+        |= (Parser.map V3.normalize vector3)
 
 
-vertexTexture : Parser s Vec2
+vertexTexture : Parser Line
 vertexTexture =
-    regex "vt[ \t]+" *> ((ignoreZ <$> vector3) <|> vector2)
+    succeed Vt
+        |. keyword "vt"
+        |. spaces
+        |= (oneOf [ ignoreZv3, vector2 ])
 
 
-vertex : Parser s Vec3
+ignoreZv3 : Parser Vec2
+ignoreZv3 =
+    delayedCommitMap (\v2 z -> v2)
+        vector2
+        (succeed identity
+            |. spaces
+            |= signedFloat
+        )
+
+
+vertex : Parser Line
 vertex =
-    regex "v[ \t]+" *> vector3
+    succeed V
+        |. keyword "v"
+        |. spaces
+        |= vector3
 
 
-comment : Parser s String
-comment =
-    regex "#" *> regex ".*"
-
-
-vector3 : Parser s Vec3
+vector3 : Parser Vec3
 vector3 =
-    threeValues vec3 betterFloat
+    threeValues vec3 signedFloat
 
 
-spaces : Parser s String
-spaces =
-    regex "[ \t]+"
+threeValues : (a -> a -> a -> b) -> Parser a -> Parser b
+threeValues tagger vtype =
+    succeed tagger
+        |= vtype
+        |. spaces
+        |= vtype
+        |. spaces
+        |= vtype
 
 
-vector2 : Parser s Vec2
+fourValues : (a -> a -> a -> a -> b) -> Parser a -> Parser b
+fourValues tagger vtype =
+    succeed tagger
+        |= vtype
+        |. spaces
+        |= vtype
+        |. spaces
+        |= vtype
+        |. spaces
+        |= vtype
+
+
+vector2 : Parser Vec2
 vector2 =
-    vec2 <$> betterFloat <*> (spaces *> betterFloat)
+    succeed vec2
+        |= signedFloat
+        |. spaces
+        |= signedFloat
 
 
-betterFloat : Parser s Float
-betterFloat =
-    (\s -> Result.withDefault 0 (JD.decodeString JD.float s)) <$> regex "[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?"
+spaces : Parser ()
+spaces =
+    ignore oneOrMore isSpace
 
 
-formatError : List String -> InputStream -> String
-formatError ms stream =
-    let
-        location =
-            currentLocation stream
+ignoredStuff : Parser ()
+ignoredStuff =
+    oneOf
+        [ delayedCommit (ignore (Exactly 1) isSpace) (ignoreUntil "\n")
+        , delayedCommit (ignore (Exactly 1) (\c -> c == '#')) (ignoreUntil "\n")
 
-        separator =
-            "| "
-
-        expectationSeparator =
-            "\n  * "
-
-        lineNumberOffset =
-            floor (logBase 10 (toFloat location.line)) + 1
-
-        separatorOffset =
-            String.length separator
-
-        padding =
-            location.column + separatorOffset + 2
-    in
-        "Parse error around line:\n\n"
-            ++ toString location.line
-            ++ separator
-            ++ location.source
-            ++ "\n"
-            ++ String.padLeft padding ' ' "^"
-            ++ "\nI expected one of the following:\n"
-            ++ expectationSeparator
-            ++ String.join expectationSeparator ms
+        -- ignore windows line endings
+        -- '\x0D' is \r, elm format somehow thought \x0D was nicer..
+        , delayedCommit (ignore (Exactly 1) (\c -> c == '\x0D')) (ignoreUntil "\n")
+        , ignore (Exactly 1) (\c -> c == '\n')
+        ]
 
 
-toInt : String -> Int
-toInt s =
-    String.toInt s |> Result.withDefault 0
+isSpace : Char -> Bool
+isSpace char =
+    char == ' ' || char == '\t'
 
 
-ignoreZ : Vec3 -> Vec2
-ignoreZ v =
-    let
-        ( x, y, _ ) =
-            V3.toTuple v
-    in
-        vec2 x y
+signedFloat : Parser Float
+signedFloat =
+    oneOf
+        [ delayedCommit (symbol "-") (Parser.map negate float)
+        , delayedCommit (symbol "+") float
+        , float
+        ]
