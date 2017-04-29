@@ -1,4 +1,14 @@
-module OBJ exposing (..)
+module OBJ
+    exposing
+        ( loadMeshWithoutTexture
+        , loadMesh
+        , loadMeshWithTangent
+        , loadObjFile
+        , Settings
+        , defaultSettings
+        , loadObjFileWith
+        , parseObjStringWith
+        )
 
 {-|
 
@@ -52,7 +62,6 @@ import Process
 import OBJ.Assembler exposing (compile)
 import OBJ.Parser exposing (parse)
 import OBJ.Types exposing (..)
-import OBJ.InternalTypes exposing (log)
 
 
 {-| Load a model that doesn't have texture coordinates.
