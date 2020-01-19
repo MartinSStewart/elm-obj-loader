@@ -1,4 +1,4 @@
-module OBJ.InternalTypes exposing (Face(..), FaceTriangle(..), Group(..), Int2, Int3, Line(..), MeshT(..), MeshWithT, ThreeOrFour(..), VertexWithTextureAndTangentT)
+module OBJ.InternalTypes exposing (Face(..), FaceTriangle(..), Group(..), Int2, Int3, MeshT(..), MeshWithT, TextLine(..), ThreeOrFour(..), VertexWithTextureAndTangentT)
 
 import Array exposing (Array)
 import Math.Vector2 exposing (Vec2)
@@ -10,11 +10,14 @@ type MeshT
     = WithoutTextureT (MeshWith Vertex)
     | WithTextureT (MeshWith VertexWithTexture)
     | WithTextureAndTangentT (MeshWithT VertexWithTextureAndTangentT)
+      -- We use this mesh type if we need to parse some lines and don't know what kind of face data we are dealing with yet
+    | UnknownMeshType (MeshWith ())
 
 
 type alias MeshWithT a =
     { vertices : Array a
     , indices : List Int3
+    , lines : List Line
     }
 
 
@@ -23,7 +26,7 @@ type alias VertexWithTextureAndTangentT =
 
 
 type
-    Line
+    TextLine
     -- v 1 3 4
     = V Vec3
       -- vt 2 4
@@ -35,7 +38,11 @@ type
       -- f 1/2/3 7/4/2 8/12/90
       -- f 4//8 4//1 6//2
     | F Face
-      -- steteful stuff
+      -- l 1 2
+      -- l 1 4 5
+      -- l 1 4 5 10
+    | L Line
+      -- stateful stuff
     | Object String
     | Group String
     | Smooth String

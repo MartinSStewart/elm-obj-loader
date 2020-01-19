@@ -1,4 +1,4 @@
-module OBJ.Parser exposing (betterFloat, canSkip, comment, fVertex, fVertexNormal, fVertexTexture, fVertexTextureNormal, face, file, formatError, fourValues, group, ignoreZ, ignoredLines, int__int, int_int, int_int_int, line, mtllib, objectName, parse, parseLine, parseLineAcc, smooth, spaces, threeOrFourValues, threeValues, toInt, usemtl, vector2, vector3, vertex, vertexNormal, vertexTexture)
+module OBJ.Parser exposing (betterFloat, canSkip, comment, fVertex, fVertexNormal, fVertexTexture, fVertexTextureNormal, face, file, formatError, fourValues, group, ignoreZ, ignoredTextLines, int__int, int_int, int_int_int, mtllib, objectName, parse, parseLine, parseLineAcc, smooth, spaces, textLine, threeOrFourValues, threeValues, toInt, twoValues, usemtl, vector2, vector3, vertex, vertexNormal, vertexTexture)
 
 import Combine exposing (..)
 import Combine.Char exposing (..)
@@ -7,6 +7,7 @@ import Json.Decode as JD
 import Math.Vector2 exposing (Vec2, vec2)
 import Math.Vector3 as V3 exposing (Vec3, toRecord, vec3)
 import OBJ.InternalTypes exposing (..)
+import OBJ.Types exposing (Line)
 import Regex
 
 
@@ -17,13 +18,13 @@ import Regex
 --  http://www.martinreddy.net/gfx/3d/OBJ.spec
 
 
-parse : String -> Result String (List Line)
+parse : String -> Result String (List TextLine)
 parse input =
     String.split "\n" input
         |> List.foldr parseLineAcc (Ok [])
 
 
-parseLineAcc : String -> Result String (List Line) -> Result String (List Line)
+parseLineAcc : String -> Result String (List TextLine) -> Result String (List TextLine)
 parseLineAcc line_ acc =
     case acc of
         Ok lines ->
@@ -54,7 +55,7 @@ regexMatches regexStr str =
 
 
 parseLine l =
-    case Combine.parse line l of
+    case Combine.parse textLine l of
         Ok ( _, stream, result ) ->
             Ok result
 
@@ -62,15 +63,15 @@ parseLine l =
             Err (formatError errors stream)
 
 
-file : Parser s (List Line)
+file : Parser s (List TextLine)
 file =
-    ignore (many ignoredLines) (sepBy (many1 ignoredLines) line)
-        |> ignore (many ignoredLines)
+    ignore (many ignoredTextLines) (sepBy (many1 ignoredTextLines) textLine)
+        |> ignore (many ignoredTextLines)
         |> ignore end
 
 
-ignoredLines : Parser s ()
-ignoredLines =
+ignoredTextLines : Parser s ()
+ignoredTextLines =
     or (skip eol) (skip comment)
 
 
@@ -100,14 +101,15 @@ usemtl =
     regex "usemtl[ \t]+" |> keep (regex ".+")
 
 
-line : Parser s Line
-line =
+textLine : Parser s TextLine
+textLine =
     keep
         (choice
             [ map V vertex
             , map Vt vertexTexture
             , map Vn vertexNormal
             , map F face
+            , map L line
             , map Object objectName
             , map Group group
             , map Smooth smooth
@@ -149,6 +151,13 @@ fVertexTextureNormal =
 fVertexNormal : Parser s Face
 fVertexNormal =
     map FVertexNormal <| threeOrFourValues int__int
+
+
+twoValues : (a -> a -> b) -> Parser s a -> Parser s b
+twoValues tagger parser =
+    parser
+        |> map tagger
+        |> andMap (spaces |> keep parser)
 
 
 threeValues : (a -> a -> a -> b) -> Parser s a -> Parser s b
@@ -221,9 +230,21 @@ vertex =
     regex "v[ \t]+" |> keep vector3
 
 
+line : Parser s Line
+line =
+    regex "v[ \t]+"
+        |> keep lineIndices
+        |> map (\( first, second ) -> { first = first, second = second, rest = [] })
+
+
 comment : Parser s String
 comment =
     regex "#" |> keep (regex ".*")
+
+
+lineIndices : Parser s ( Int, Int )
+lineIndices =
+    twoValues Tuple.pair int
 
 
 vector3 : Parser s Vec3

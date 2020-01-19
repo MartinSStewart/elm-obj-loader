@@ -1,6 +1,7 @@
 module OBJ.Types exposing
     ( ObjFile, Mesh(..), MeshWith
     , Vertex, VertexWithTexture, VertexWithTextureAndTangent
+    , Line
     )
 
 {-| These are the types used by the obj loader.
@@ -26,7 +27,7 @@ So the keys of this dictionary are:
 
     Dict GroupNameOrObjectName (Dict MaterialName Mesh)
 
-If no name is specified in the input file, "__default__" will be used instead.
+If no name is specified in the input file, "**default**" will be used instead.
 
 -}
 type alias ObjFile =
@@ -51,6 +52,14 @@ type Mesh
 type alias MeshWith a =
     { vertices : List a
     , indices : List ( Int, Int, Int )
+    , lines : List Line
+    }
+
+
+type alias Line =
+    { first : Int
+    , second : Int
+    , rest : List Int
     }
 
 

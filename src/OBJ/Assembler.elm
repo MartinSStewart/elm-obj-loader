@@ -9,6 +9,7 @@ import OBJ.InternalTypes exposing (..)
 import OBJ.Types exposing (..)
 
 
+compile : Config -> List TextLine -> Dict String (Dict String Mesh)
 compile config lines =
     compileHelper (emptyCompileState config) lines
         |> addCurrentMesh
@@ -16,6 +17,28 @@ compile config lines =
         |> .groups
 
 
+type alias Config =
+    { withTangents : Bool }
+
+
+type alias CompileState =
+    { config : Config
+    , currentGroup : Dict String Mesh
+    , currentGroupName : String
+    , currentIndex : Int
+    , currentMaterialName : String
+    , currentMesh : Maybe MeshT
+    , groups : Dict String (Dict String Mesh)
+    , knownVertex : Dict ( Int, Int ) Int
+    , knownVertexTextures : Dict ( Int, Int, Int ) Int
+    , knownVertexTexturesTangents : Dict ( Int, Int, Int ) Int
+    , vns : Array Vec3
+    , vs : Array Vec3
+    , vts : Array Vec2
+    }
+
+
+emptyCompileState : Config -> CompileState
 emptyCompileState config =
     { -- this is a Dict (GroupName/String) Group
       -- it's the final output of this algorithm
@@ -36,6 +59,7 @@ emptyCompileState config =
     }
 
 
+compileHelper : CompileState -> List TextLine -> CompileState
 compileHelper state lines =
     case lines of
         [] ->
@@ -49,6 +73,7 @@ compileHelper state lines =
 This means it manipulates the current state to reflect state changing commands
 and builds meshes on the fly.
 -}
+insertLine : TextLine -> CompileState -> CompileState
 insertLine line state =
     case line of
         Object s ->
@@ -92,7 +117,11 @@ insertLine line state =
             triangulateFace f
                 |> List.foldr addFace state
 
+        L l ->
+            state
 
+
+triangulateFace : Face -> List FaceTriangle
 triangulateFace f =
     case f of
         FVertexTextureNormal a ->
@@ -102,6 +131,7 @@ triangulateFace f =
             triangulate a |> List.map FTVertexNormal
 
 
+addCurrentMesh : CompileState -> CompileState
 addCurrentMesh state =
     -- Adds the current mesh to the current group.
     -- We also normalize all values here that need normalizing
@@ -129,7 +159,11 @@ finalizeMesh mesh =
             WithoutTexture m
 
         WithTextureAndTangentT m ->
-            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices }
+            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices, lines = [] }
+
+        -- If we got this far and still have an unknown mesh type then infer the type based on the vertices
+        UnknownMeshType m ->
+            Debug.todo ""
 
 
 reducer : VertexWithTextureAndTangentT -> List VertexWithTextureAndTangent -> List VertexWithTextureAndTangent
@@ -160,6 +194,7 @@ reducer { position, texCoord, normal, sdir, tdir } acc =
         :: acc
 
 
+addCurrentGroup : CompileState -> CompileState
 addCurrentGroup state =
     if Dict.isEmpty state.currentGroup then
         state
@@ -171,6 +206,7 @@ addCurrentGroup state =
         }
 
 
+addFace : FaceTriangle -> CompileState -> CompileState
 addFace f state =
     -- this function adds a single face to the currentMesh
     -- for this it needs a dictionary containing the already known vertices,
@@ -184,6 +220,34 @@ addFace f state =
             addFaceToMesh f m state
 
 
+addLine : Line -> CompileState -> CompileState
+addLine line state =
+    case state.currentMesh of
+        Nothing ->
+            -- we dont have a mesh yet, create an unknown mesh type since we don't know what kind of data we are dealing with yet
+            addLineToMesh line (UnknownMeshType emptyMesh) { state | currentIndex = 0 }
+
+        Just mesh ->
+            addLineToMesh line mesh state
+
+
+addLineToMesh : Line -> MeshT -> CompileState -> CompileState
+addLineToMesh line meshT compileState =
+    case meshT of
+        WithoutTextureT m ->
+            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithoutTextureT |> Just }
+
+        WithTextureT m ->
+            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithTextureT |> Just }
+
+        WithTextureAndTangentT m ->
+            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithTextureAndTangentT |> Just }
+
+        UnknownMeshType m ->
+            { compileState | currentMesh = { m | lines = line :: m.lines } |> UnknownMeshType |> Just }
+
+
+addFaceToMesh : FaceTriangle -> MeshT -> CompileState -> CompileState
 addFaceToMesh f mesh ({ vs, vts, vns, currentIndex } as state) =
     -- add a face to the mesh
     case ( f, mesh ) of
@@ -266,7 +330,7 @@ applyForFaceA f ( i1, i2, i3 ) s_0 =
     ( s_3, Array.append (Array.append vs_1 vs_2) vs_3, ( i_3, i_2, i_1 ) )
 
 
-getFaceTangent (( ( pi1, ti1, ni1 ), ( pi2, ti2, ni2 ), ( pi3, ti3, ni3 ) ) as index) { vs, vts, vns } =
+getFaceTangent ( ( pi1, ti1, _ ), ( pi2, ti2, _ ), ( pi3, ti3, _ ) ) { vs, vts, vns } =
     -- This is from here:
     -- https://web.archive.org/web/20160409104130/http://www.terathon.com/code/tangent.html
     -- But since the reference doesn't mention what to do in case the denominator is 0,
@@ -376,6 +440,7 @@ getOrInsertVTNT ( s_dir, t_dir ) index ({ vs, vts, vns, knownVertexTexturesTange
                     ( state, Array.empty, -999 )
 
 
+getOrInsertVN : ( Int, Int ) -> CompileState -> ( CompileState, List Vertex, Int )
 getOrInsertVN index ({ vs, vns, knownVertex, currentIndex } as state) =
     case Dict.get index knownVertex of
         Just i ->
@@ -397,10 +462,12 @@ getOrInsertVN index ({ vs, vns, knownVertex, currentIndex } as state) =
                     ( state, [], -999 )
 
 
-fst2 ( a, b, c ) =
+fst2 : ( a, b, c ) -> ( a, b )
+fst2 ( a, b, _ ) =
     ( a, b )
 
 
+arrayUpdate : Int -> (a -> a) -> Array a -> Array a
 arrayUpdate i f a =
     case Array.get i a of
         Just e ->
@@ -410,6 +477,7 @@ arrayUpdate i f a =
             a
 
 
+triangulate : ThreeOrFour t -> List ( t, t, t )
 triangulate threeOrFour =
     case threeOrFour of
         Three { a, b, c } ->
@@ -419,14 +487,8 @@ triangulate threeOrFour =
             [ ( a, b, c ), ( d, a, c ) ]
 
 
+createMesh : Bool -> FaceTriangle -> MeshT
 createMesh withTangents f =
-    let
-        emptyMeshT =
-            { vertices = Array.empty, indices = [] }
-
-        emptyMesh =
-            { vertices = [], indices = [] }
-    in
     case f of
         FTVertexTextureNormal _ ->
             if withTangents then
@@ -439,16 +501,28 @@ createMesh withTangents f =
             WithoutTextureT emptyMesh
 
 
+emptyMesh : MeshWith a
+emptyMesh =
+    { vertices = [], indices = [], lines = [] }
+
+
+emptyMeshT : MeshWithT a
+emptyMeshT =
+    { vertices = Array.empty, indices = [], lines = [] }
+
+
 
 --
 -- Some helpers:
 --
 
 
+t3map : (a -> b) -> ( a, a, a ) -> ( b, b, b )
 t3map f ( a, b, c ) =
     ( f a, f b, f c )
 
 
+updateArray : Int -> (a -> a) -> Array a -> Array a
 updateArray i f a =
     case Array.get i a of
         Just v ->
@@ -458,6 +532,7 @@ updateArray i f a =
             a
 
 
+get3 : ( Int, Int, Int ) -> Array a -> Array b -> Array c -> Maybe ( a, b, c )
 get3 ( a, b, c ) a1 a2 a3 =
     case ( Array.get (a - 1) a1, Array.get (b - 1) a2, Array.get (c - 1) a3 ) of
         ( Just a_, Just b_, Just c_ ) ->
@@ -467,6 +542,7 @@ get3 ( a, b, c ) a1 a2 a3 =
             Nothing
 
 
+get2 : ( Int, Int ) -> Array a -> Array b -> Maybe ( a, b )
 get2 ( a, b ) a1 a2 =
     case ( Array.get (a - 1) a1, Array.get (b - 1) a2 ) of
         ( Just a_, Just b_ ) ->
