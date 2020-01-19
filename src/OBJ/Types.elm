@@ -1,7 +1,7 @@
 module OBJ.Types exposing
     ( ObjFile, Mesh(..), MeshWith
     , Vertex, VertexWithTexture, VertexWithTextureAndTangent
-    , Line
+    , Line, lineToList
     )
 
 {-| These are the types used by the obj loader.
@@ -61,6 +61,11 @@ type alias Line =
     , second : Int
     , rest : List Int
     }
+
+
+lineToList : Line -> List Int
+lineToList line =
+    line.first :: line.second :: line.rest
 
 
 {-| A 3D position with a normal

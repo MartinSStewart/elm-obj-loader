@@ -10,14 +10,11 @@ type MeshT
     = WithoutTextureT (MeshWith Vertex)
     | WithTextureT (MeshWith VertexWithTexture)
     | WithTextureAndTangentT (MeshWithT VertexWithTextureAndTangentT)
-      -- We use this mesh type if we need to parse some lines and don't know what kind of face data we are dealing with yet
-    | UnknownMeshType (MeshWith ())
 
 
 type alias MeshWithT a =
     { vertices : Array a
     , indices : List Int3
-    , lines : List Line
     }
 
 

@@ -10,10 +10,15 @@ import Math.Vector3 as Vector3 exposing (Vec3, vec3)
 import Math.Vector4 as Vector4 exposing (Vec4)
 import OBJ exposing (parseObjStringWith)
 import OBJ.InternalTypes exposing (TextLine(..))
-import OBJ.Parser exposing (fourValues, parseLine, threeValues)
-import OBJ.Types exposing (Mesh(..), MeshWith, ObjFile, Vertex, VertexWithTexture, VertexWithTextureAndTangent)
+import OBJ.Parser exposing (fourValues, parseLine, threeValues, twoValues)
+import OBJ.Types exposing (Line, Mesh(..), MeshWith, ObjFile, Vertex, VertexWithTexture, VertexWithTextureAndTangent)
 import ObjData exposing (basicShapeExpectedOutput, basicShapeWithTextureAndNormals)
 import Test exposing (..)
+
+
+doublify : a -> a -> List a
+doublify a b =
+    [ a, b ]
 
 
 triplify : a -> a -> a -> List a
@@ -23,6 +28,11 @@ triplify a b c =
 
 quadify a b c d =
     [ a, b, c, d ]
+
+
+doubleParser : Parser s (List Int)
+doubleParser =
+    twoValues doublify Combine.Num.int
 
 
 tripleParser : Parser s (List Int)
@@ -43,6 +53,10 @@ suite =
                 String.fromInt number
                     |> Combine.parse Combine.Num.int
                     |> expectParsedValueEquals number
+        , test "has a `twoValues` method that can parse two Ints" <|
+            \() ->
+                Combine.parse doubleParser "1 -2"
+                    |> expectParsedValueEquals [ 1, -2 ]
         , test "has a `threeValues` method that can parse three Ints" <|
             \() ->
                 Combine.parse tripleParser "1 -2 3"
@@ -51,7 +65,7 @@ suite =
             \() ->
                 Combine.parse quadParser "1 2 -3 4"
                     |> expectParsedValueEquals [ 1, 2, -3, 4 ]
-        , test "has a line method that can parse a single line" <|
+        , test "has a line method that can parse a single text line" <|
             \() ->
                 parseLine "v 0.1 -0.2 0.3"
                     |> equalsOrFail (V (vec3 0.1 -0.2 0.3))
@@ -68,6 +82,14 @@ suite =
                     |> Result.map (List.map2 vertexWithTextureAndTangentsEqual basicShapeExpectedOutput)
                     |> Result.map (List.foldl andAlso Expect.pass)
                     |> failErrorResults
+        , test "can parse lines from a real OBJ-formatted string" <|
+            \() ->
+                parseObjStringWith settings ObjData.modelWithLines
+                    |> Result.andThen getMesh
+                    |> Debug.log ""
+                    |> Result.map getLines
+                    -- Turn our list of vertices into a list of expectations (based on expectations)
+                    |> Expect.equal (Ok [ { first = 1, rest = [], second = 2 }, { first = 0, rest = [], second = 1 } ])
         ]
 
 
@@ -145,6 +167,19 @@ getVertices mesh =
 
         WithTextureAndTangent m ->
             Ok m.vertices
+
+
+getLines : Mesh -> List Line
+getLines mesh =
+    case mesh of
+        WithoutTexture m ->
+            m.lines
+
+        WithTexture m ->
+            m.lines
+
+        WithTextureAndTangent m ->
+            m.lines
 
 
 getMesh : ObjFile -> Result String Mesh

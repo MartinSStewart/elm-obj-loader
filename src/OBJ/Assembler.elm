@@ -1,4 +1,4 @@
-module OBJ.Assembler exposing (addCurrentGroup, addCurrentMesh, addFace, addFaceToMesh, applyForFace, applyForFaceA, arrayUpdate, compile, compileHelper, createMesh, emptyCompileState, finalizeMesh, fst2, get2, get3, getFaceTangent, getOrInsertVN, getOrInsertVTN, getOrInsertVTNT, insertLine, t3map, triangulate, triangulateFace, updateArray)
+module OBJ.Assembler exposing (addCurrentGroup, addCurrentMesh, addFace, addFaceToMesh, applyForFace, applyForFaceA, arrayUpdate, compile, compileHelper, createMesh, emptyCompileState, finalizeMesh, fst2, get2, get3, getFaceTangent, getOrInsertVN, getOrInsertVTN, getOrInsertVTNT, insertTextLine, t3map, triangulate, triangulateFace, updateArray)
 
 import Array exposing (Array)
 import Dict exposing (Dict)
@@ -35,6 +35,7 @@ type alias CompileState =
     , vns : Array Vec3
     , vs : Array Vec3
     , vts : Array Vec2
+    , lines : List Line
     }
 
 
@@ -51,6 +52,7 @@ emptyCompileState config =
     , vs = Array.empty
     , vts = Array.empty
     , vns = Array.empty
+    , lines = []
     , currentIndex = 0
     , knownVertexTextures = Dict.empty
     , knownVertexTexturesTangents = Dict.empty
@@ -66,16 +68,16 @@ compileHelper state lines =
             state
 
         l :: ls ->
-            compileHelper (insertLine l state) ls
+            compileHelper (insertTextLine l state) ls
 
 
 {-| This 'inserts' a line into the state.
 This means it manipulates the current state to reflect state changing commands
 and builds meshes on the fly.
 -}
-insertLine : TextLine -> CompileState -> CompileState
-insertLine line state =
-    case line of
+insertTextLine : TextLine -> CompileState -> CompileState
+insertTextLine textLine state =
+    case textLine of
         Object s ->
             -- even though the specs doesn't give it any meaningful meaning,
             -- I treat is exactly like a group statement.
@@ -83,7 +85,7 @@ insertLine line state =
             addCurrentGroup state
                 |> (\st -> { st | currentGroupName = s })
 
-        MtlLib s ->
+        MtlLib _ ->
             -- MtlLib statements are ignored,
             -- as I don't plan to support loading .mtl files
             state
@@ -92,7 +94,7 @@ insertLine line state =
             addCurrentGroup state
                 |> (\st -> { st | currentGroupName = s })
 
-        Smooth s ->
+        Smooth _ ->
             -- smooth groups are ignored.
             -- I tried to calculate these, but failed,
             -- since doing them correctly is more tricky than you might think:
@@ -118,7 +120,7 @@ insertLine line state =
                 |> List.foldr addFace state
 
         L l ->
-            state
+            { state | lines = l :: state.lines }
 
 
 triangulateFace : Face -> List FaceTriangle
@@ -138,32 +140,29 @@ addCurrentMesh state =
     case state.currentMesh of
         Just m ->
             { state
-                | currentGroup = Dict.insert state.currentMaterialName (finalizeMesh m) state.currentGroup
+                | currentGroup = Dict.insert state.currentMaterialName (finalizeMesh m state.lines) state.currentGroup
                 , currentMesh = Nothing
                 , knownVertexTextures = Dict.empty
                 , knownVertexTexturesTangents = Dict.empty
                 , knownVertex = Dict.empty
+                , lines = []
             }
 
         _ ->
             state
 
 
-finalizeMesh : MeshT -> Mesh
-finalizeMesh mesh =
+finalizeMesh : MeshT -> List Line -> Mesh
+finalizeMesh mesh lines =
     case mesh of
         WithTextureT m ->
-            WithTexture m
+            WithTexture { m | lines = lines }
 
         WithoutTextureT m ->
-            WithoutTexture m
+            WithoutTexture { m | lines = lines }
 
         WithTextureAndTangentT m ->
-            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices, lines = [] }
-
-        -- If we got this far and still have an unknown mesh type then infer the type based on the vertices
-        UnknownMeshType m ->
-            Debug.todo ""
+            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices, lines = lines }
 
 
 reducer : VertexWithTextureAndTangentT -> List VertexWithTextureAndTangent -> List VertexWithTextureAndTangent
@@ -220,33 +219,6 @@ addFace f state =
             addFaceToMesh f m state
 
 
-addLine : Line -> CompileState -> CompileState
-addLine line state =
-    case state.currentMesh of
-        Nothing ->
-            -- we dont have a mesh yet, create an unknown mesh type since we don't know what kind of data we are dealing with yet
-            addLineToMesh line (UnknownMeshType emptyMesh) { state | currentIndex = 0 }
-
-        Just mesh ->
-            addLineToMesh line mesh state
-
-
-addLineToMesh : Line -> MeshT -> CompileState -> CompileState
-addLineToMesh line meshT compileState =
-    case meshT of
-        WithoutTextureT m ->
-            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithoutTextureT |> Just }
-
-        WithTextureT m ->
-            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithTextureT |> Just }
-
-        WithTextureAndTangentT m ->
-            { compileState | currentMesh = { m | lines = line :: m.lines } |> WithTextureAndTangentT |> Just }
-
-        UnknownMeshType m ->
-            { compileState | currentMesh = { m | lines = line :: m.lines } |> UnknownMeshType |> Just }
-
-
 addFaceToMesh : FaceTriangle -> MeshT -> CompileState -> CompileState
 addFaceToMesh f mesh ({ vs, vts, vns, currentIndex } as state) =
     -- add a face to the mesh
@@ -294,6 +266,7 @@ addFaceToMesh f mesh ({ vs, vts, vns, currentIndex } as state) =
             , vs = Array.empty
             , vts = Array.empty
             , vns = Array.empty
+            , lines = []
             , groups = Dict.empty
             , currentIndex = 0
             , knownVertexTextures = Dict.empty
@@ -508,7 +481,7 @@ emptyMesh =
 
 emptyMeshT : MeshWithT a
 emptyMeshT =
-    { vertices = Array.empty, indices = [], lines = [] }
+    { vertices = Array.empty, indices = [] }
 
 
 

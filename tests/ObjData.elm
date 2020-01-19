@@ -1,4 +1,4 @@
-module ObjData exposing (basicShapeExpectedOutput, basicShapeWithTextureAndNormals)
+module ObjData exposing (basicShapeExpectedOutput, basicShapeWithTextureAndNormals, modelWithLines)
 
 import Math.Vector2 exposing (vec2)
 import Math.Vector3 exposing (vec3)
@@ -63,3 +63,24 @@ basicShapeExpectedOutput =
       , texCoord = vec2 0.822851 0.587917
       }
     ]
+
+
+modelWithLines =
+    """
+v 0.459620 3.630721 0.459620
+v 0.650002 3.630721 0.000000
+v 0.000000 3.835475 0.000000
+
+vt 0.861694 0.549074
+vt 0.877784 0.587917
+vt 0.822851 0.587917
+
+vn 0.301361 0.878782 0.370032
+vn 0.474745 0.878783 0.048561
+vn 0.000000 1.000000 0.000000
+
+l 1 2
+l 2 3
+
+f 1/1/1 2/2/2 3/3/3
+"""

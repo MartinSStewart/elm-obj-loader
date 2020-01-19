@@ -232,9 +232,9 @@ vertex =
 
 line : Parser s Line
 line =
-    regex "v[ \t]+"
+    regex "l[ \t]+"
         |> keep lineIndices
-        |> map (\( first, second ) -> { first = first, second = second, rest = [] })
+        |> map (\( first, second ) -> { first = first - 1, second = second - 1, rest = [] })
 
 
 comment : Parser s String
