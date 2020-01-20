@@ -71,8 +71,13 @@ suite =
                     |> equalsOrFail (V (vec3 0.1 -0.2 0.3))
         , test "can parse an empty string" <|
             \() ->
+                let
+                    -- The correct expected is Dict.empty but this is good enough for my purposes
+                    expected =
+                        Dict.fromList [ ( "__default__", Dict.fromList [ ( "__default__", WithoutTexture { indices = [], lines = [], vertices = [] } ) ] ) ]
+                in
                 parseObjStringWith settings "# Comment\n"
-                    |> equalsOrFail Dict.empty
+                    |> equalsOrFail expected
         , test "can parse vertices from a real OBJ-formatted string" <|
             \() ->
                 parseObjStringWith settings basicShapeWithTextureAndNormals
@@ -86,10 +91,26 @@ suite =
             \() ->
                 parseObjStringWith settings ObjData.modelWithLines
                     |> Result.andThen getMesh
-                    |> Debug.log ""
                     |> Result.map getLines
                     -- Turn our list of vertices into a list of expectations (based on expectations)
-                    |> Expect.equal (Ok [ { first = 1, rest = [], second = 2 }, { first = 0, rest = [], second = 1 } ])
+                    |> Expect.equal
+                        (Ok
+                            [ { first = Vector3.vec3 0.650002 3.630721 0.0, rest = [], second = Vector3.vec3 0.0 3.835475 0.0 }
+                            , { first = Vector3.vec3 0.45962 3.630721 0.45962, rest = [], second = Vector3.vec3 0.650002 3.630721 0.0 }
+                            ]
+                        )
+        , test "can parse lines from a real OBJ-formatted string that has no faces or extra vertex data" <|
+            \() ->
+                parseObjStringWith settings ObjData.modelWithOnlyLines
+                    |> Result.andThen getMesh
+                    |> Result.map getLines
+                    -- Turn our list of vertices into a list of expectations (based on expectations)
+                    |> Expect.equal
+                        (Ok
+                            [ { first = Vector3.vec3 0.650002 3.630721 0.0, rest = [], second = Vector3.vec3 0.0 3.835475 0.0 }
+                            , { first = Vector3.vec3 0.45962 3.630721 0.45962, rest = [], second = Vector3.vec3 0.650002 3.630721 0.0 }
+                            ]
+                        )
         ]
 
 

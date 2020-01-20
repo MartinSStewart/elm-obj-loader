@@ -57,13 +57,13 @@ type alias MeshWith a =
 
 
 type alias Line =
-    { first : Int
-    , second : Int
-    , rest : List Int
+    { first : Vec3
+    , second : Vec3
+    , rest : List Vec3
     }
 
 
-lineToList : Line -> List Int
+lineToList : Line -> List Vec3
 lineToList line =
     line.first :: line.second :: line.rest
 

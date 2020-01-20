@@ -230,7 +230,7 @@ vertex =
     regex "v[ \t]+" |> keep vector3
 
 
-line : Parser s Line
+line : Parser s LineIndices
 line =
     regex "l[ \t]+"
         |> keep lineIndices

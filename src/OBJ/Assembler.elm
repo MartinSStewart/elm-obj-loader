@@ -35,7 +35,7 @@ type alias CompileState =
     , vns : Array Vec3
     , vs : Array Vec3
     , vts : Array Vec2
-    , lines : List Line
+    , lines : List LineIndices
     }
 
 
@@ -137,32 +137,57 @@ addCurrentMesh : CompileState -> CompileState
 addCurrentMesh state =
     -- Adds the current mesh to the current group.
     -- We also normalize all values here that need normalizing
-    case state.currentMesh of
-        Just m ->
-            { state
-                | currentGroup = Dict.insert state.currentMaterialName (finalizeMesh m state.lines) state.currentGroup
-                , currentMesh = Nothing
-                , knownVertexTextures = Dict.empty
-                , knownVertexTexturesTangents = Dict.empty
-                , knownVertex = Dict.empty
-                , lines = []
-            }
+    let
+        mesh =
+            finalizeMesh
+                state
+                (Maybe.withDefault
+                    (WithoutTextureT { vertices = [], indices = [], lines = [] })
+                    state.currentMesh
+                )
+    in
+    { state
+        | currentGroup = Dict.insert state.currentMaterialName mesh state.currentGroup
+        , currentMesh = Nothing
+        , knownVertexTextures = Dict.empty
+        , knownVertexTexturesTangents = Dict.empty
+        , knownVertex = Dict.empty
+        , lines = []
+    }
 
-        _ ->
-            state
 
+finalizeMesh : CompileState -> MeshT -> Mesh
+finalizeMesh state mesh =
+    let
+        lines_ : List Line
+        lines_ =
+            state.lines
+                |> List.filterMap
+                    (\line ->
+                        case ( Array.get line.first state.vs, Array.get line.second state.vs ) of
+                            ( Just v0, Just v1 ) ->
+                                Just
+                                    { first = v0
+                                    , second = v1
+                                    , rest =
+                                        List.filterMap
+                                            (\index -> Array.get index state.vs)
+                                            line.rest
+                                    }
 
-finalizeMesh : MeshT -> List Line -> Mesh
-finalizeMesh mesh lines =
+                            _ ->
+                                Nothing
+                    )
+    in
     case mesh of
         WithTextureT m ->
-            WithTexture { m | lines = lines }
+            WithTexture { m | lines = lines_ }
 
         WithoutTextureT m ->
-            WithoutTexture { m | lines = lines }
+            WithoutTexture { m | lines = lines_ }
 
         WithTextureAndTangentT m ->
-            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices, lines = lines }
+            WithTextureAndTangent { indices = m.indices, vertices = Array.foldr reducer [] m.vertices, lines = lines_ }
 
 
 reducer : VertexWithTextureAndTangentT -> List VertexWithTextureAndTangent -> List VertexWithTextureAndTangent

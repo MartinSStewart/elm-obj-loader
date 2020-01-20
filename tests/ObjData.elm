@@ -1,4 +1,4 @@
-module ObjData exposing (basicShapeExpectedOutput, basicShapeWithTextureAndNormals, modelWithLines)
+module ObjData exposing (basicShapeExpectedOutput, basicShapeWithTextureAndNormals, modelWithLines, modelWithOnlyLines)
 
 import Math.Vector2 exposing (vec2)
 import Math.Vector3 exposing (vec3)
@@ -83,4 +83,15 @@ l 1 2
 l 2 3
 
 f 1/1/1 2/2/2 3/3/3
+"""
+
+
+modelWithOnlyLines =
+    """
+v 0.459620 3.630721 0.459620
+v 0.650002 3.630721 0.000000
+v 0.000000 3.835475 0.000000
+
+l 1 2
+l 2 3
 """

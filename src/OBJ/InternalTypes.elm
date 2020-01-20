@@ -1,4 +1,4 @@
-module OBJ.InternalTypes exposing (Face(..), FaceTriangle(..), Group(..), Int2, Int3, MeshT(..), MeshWithT, TextLine(..), ThreeOrFour(..), VertexWithTextureAndTangentT)
+module OBJ.InternalTypes exposing (Face(..), FaceTriangle(..), Group(..), Int2, Int3, LineIndices, MeshT(..), MeshWithT, TextLine(..), ThreeOrFour(..), VertexWithTextureAndTangentT)
 
 import Array exposing (Array)
 import Math.Vector2 exposing (Vec2)
@@ -38,13 +38,20 @@ type
       -- l 1 2
       -- l 1 4 5
       -- l 1 4 5 10
-    | L Line
+    | L LineIndices
       -- stateful stuff
     | Object String
     | Group String
     | Smooth String
     | MtlLib String
     | UseMtl String
+
+
+type alias LineIndices =
+    { first : Int
+    , second : Int
+    , rest : List Int
+    }
 
 
 type Face
